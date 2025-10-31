@@ -1,0 +1,4 @@
+pypdf>=4.0.0
+PyQt5>=5.15.0
+img2pdf>=0.5.1
+reportlab>=4.0.0

@@ -3,6 +3,7 @@ from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import QFileDialog, QMessageBox, QPushButton, QHBoxLayout
 
 import pdfmerge
+import os
 
 
 class UiPDFMerger(object):
@@ -83,7 +84,7 @@ class UiPDFMerger(object):
 
         self.retranslateUi(PDFMerger, _translate)
         QtCore.QMetaObject.connectSlotsByName(PDFMerger)
-
+        
         self.btnAdd.clicked.connect(lambda: self.addButtonClicked())
         self.btnMoveUp.clicked.connect(lambda: self.moveUpButtonClicked())
         self.btnMoveDown.clicked.connect(lambda: self.moveDownButtonClicked())
@@ -105,12 +106,13 @@ class UiPDFMerger(object):
         self.label_2.setText(_translate("PDFMerger", "Files will be merged in the below order"))
 
     def addButtonClicked(self):
-        filter_mask = "Python/text files(*.pdf)"
+        filter_mask = "Supported files (*.pdf *.png *.jpg *.jpeg *.bmp *.tif *.tiff *.gif *.txt)"
         caption = "Open Files"
-        filename = QFileDialog.getOpenFileNames(None, caption, 'str', filter_mask)
-        self.path = filename[0]
-        for i in self.path:
-            self.listWidget.addItem(i)
+        selected = QFileDialog.getOpenFileNames(None, caption, '', filter_mask)
+        paths = selected[0]
+        for p in paths:
+            if p:
+                self.listWidget.addItem(p)
 
     def moveUpButtonClicked(self):
         self.currentRow = self.listWidget.currentRow()
@@ -133,6 +135,8 @@ class UiPDFMerger(object):
             self.showdialog("Select an item to move")
             return
         else:
+            if self.currentRow >= self.listWidget.count() - 1:
+                return
             self.currentItem = self.listWidget.takeItem(self.currentRow)
             self.listWidget.insertItem(self.currentRow + 1, self.currentItem)
             self.currentRow = self.currentRow + 1
@@ -140,7 +144,8 @@ class UiPDFMerger(object):
 
     def deleteButtonClicked(self):
         self.currentRow = self.listWidget.currentRow()
-        self.listWidget.takeItem(self.currentRow)
+        if self.currentRow != -1:
+            self.listWidget.takeItem(self.currentRow)
 
     def outDirButtonClicked(self):
         self.outputfolder = QFileDialog.getExistingDirectory()
@@ -149,23 +154,49 @@ class UiPDFMerger(object):
 
     def mergeButtonClicked(self):
         _translate = QtCore.QCoreApplication.translate
-        if self.lineEdit.text() == "":
+        # Validate inputs
+        if self.lineEdit.text().strip() == "":
             self.showdialog("Select Output Directory")
-        else:
-            try:
+            return
+        if self.outputFile.text().strip() == "":
+            self.showdialog("Enter an output filename")
+            return
+        if self.listWidget.count() == 0:
+            self.showdialog("Add PDFs to merge")
+            return
 
-                if len(self.listWidget) == 0:
-                    self.showdialog("Add PDFs to merge")
-                self.label.setText(_translate("PDF Merger", "Merging... Please wait..."))
-                self.label.setStyleSheet("color:white")
-                self.label.repaint()
-                readFileList = [self.listWidget.item(i).text() for i in range(self.listWidget.count())]
-                pdfmerge.merge(self, readFileList, _translate)
-                self.label.setText(_translate("PDF Merger", "Merged Successfully!"))
-                self.label.setStyleSheet("color:green")
-                self.label.repaint()
-            except Exception as e:
-                print(e)
+        try:
+            readFileList = [self.listWidget.item(i).text() for i in range(self.listWidget.count())]
+            # Determine output path
+            out_dir = self.lineEdit.text().strip()
+            out_name = self.outputFile.text().strip()
+            out_path = os.path.join(out_dir, f"{out_name}.pdf")
+
+            # Ask for overwrite if file exists
+            if os.path.exists(out_path):
+                reply = QMessageBox.question(
+                    None,
+                    "Overwrite file?",
+                    f"Output file already exists:\n{out_path}\n\nDo you want to overwrite it?",
+                    QMessageBox.Yes | QMessageBox.No,
+                    QMessageBox.No,
+                )
+                if reply != QMessageBox.Yes:
+                    return
+
+            self.label.setText(_translate("PDF Merger", "Merging... Please wait..."))
+            self.label.setStyleSheet("color:white")
+            self.label.repaint()
+
+            # Use updated merge utility with overwrite=True (user confirmed if necessary)
+            pdfmerge.merge_pdfs(readFileList, out_path, overwrite=True)
+
+            self.label.setText(_translate("PDF Merger", "Merged Successfully!"))
+            self.label.setStyleSheet("color:green")
+            self.label.repaint()
+        except Exception as e:
+            # Display error
+            self.showdialog(f"Merge failed: {e}")
 
     def showdialog(self, displaytext):
         msg = QMessageBox()
@@ -173,10 +204,8 @@ class UiPDFMerger(object):
         msg.setWindowTitle("Warning")
         msg.setWindowIcon(QIcon('images/warning.png'))
         msg.setText(displaytext)
-        msg.setStandardButtons(QMessageBox.ok)
-        # msg.buttonClicked.connect(msgbtn)
-        # retval = msg.exec_()
-        # print "value of pressed message box button: " + retval
+        msg.setStandardButtons(QMessageBox.Ok)
+        msg.exec_()
 
 
 if __name__ == "__main__":
